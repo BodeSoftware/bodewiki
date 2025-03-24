@@ -1,0 +1,18 @@
+mutation (
+  $featurePageRatings: Boolean
+  $featurePageComments: Boolean
+  $featurePersonalWikis: Boolean
+  $collaborativeEditor: Boolean
+) {
+  updateConfig(
+    featurePageRatings: $featurePageRatings
+    featurePageComments: $featurePageComments
+    featurePersonalWikis: $featurePersonalWikis
+    collaborativeEditor: $collaborativeEditor
+  ) {
+    responseResult {
+      succeeded
+      message
+    }
+  }
+} 

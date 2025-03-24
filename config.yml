@@ -1,0 +1,34 @@
+# Wiki.js Configuration
+
+# Site
+title: Wiki.js
+host: http://localhost
+
+# Database
+db:
+  type: sqlite
+  storage: ./db.sqlite
+
+# SSL
+ssl:
+  enabled: false
+
+# Port to listen on
+port: 3000
+
+# Database Pool
+pool:
+  min: 2
+  max: 10
+
+# Log Level
+logLevel: info
+
+# Upload Limits (in bytes)
+uploads:
+  maxFileSize: 10485760
+  maxFiles: 20
+
+# Features
+features:
+  collaborativeEditor: false 

@@ -1,0 +1,28 @@
+{
+  "presets": [
+    ["@babel/preset-env", {
+      "useBuiltIns": "entry",
+      "corejs": 3,
+      "modules": false,
+      "loose": true,
+      "targets": {
+        "browsers": ["last 2 versions", "ie >= 11"]
+      }
+    }]
+  ],
+  "plugins": [
+    ["@babel/plugin-proposal-class-properties", { "loose": true }],
+    "@babel/plugin-proposal-export-namespace-from",
+    "@babel/plugin-proposal-throw-expressions",
+    "@babel/plugin-syntax-dynamic-import",
+    "@babel/plugin-syntax-import-meta",
+    "babel-plugin-graphql-tag",
+    "babel-plugin-lodash",
+    ["babel-plugin-transform-imports", {
+      "vuetify": {
+        "transform": "vuetify/es5/components/${member}",
+        "preventFullImport": true
+      }
+    }]
+  ]
+} 
