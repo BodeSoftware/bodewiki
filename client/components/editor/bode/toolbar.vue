@@ -16,6 +16,16 @@
           v-btn.mx-0(icon, tile, v-on='on', @click='toggleStrike')
             v-icon mdi-format-strikethrough
         span {{$t('editor:markup.strikethrough')}}
+      v-tooltip(bottom, color='primary')
+        template(v-slot:activator='{ on }')
+          v-btn.mx-0(icon, tile, v-on='on', @click='toggleSubscript')
+            v-icon mdi-format-subscript
+        span {{$t('editor:markup.subscript')}}
+      v-tooltip(bottom, color='primary')
+        template(v-slot:activator='{ on }')
+          v-btn.mx-0(icon, tile, v-on='on', @click='toggleSuperscript')
+            v-icon mdi-format-superscript
+        span {{$t('editor:markup.superscript')}}
       v-menu(offset-y, open-on-hover)
         template(v-slot:activator='{ on }')
           v-btn.mx-0(icon, tile, v-on='on')
@@ -37,6 +47,11 @@
           v-btn.mx-0(icon, tile, v-on='on', @click='toggleOrderedList')
             v-icon mdi-format-list-numbered
         span {{$t('editor:markup.orderedList')}}
+      v-tooltip(bottom, color='primary')
+        template(v-slot:activator='{ on }')
+          v-btn.mx-0(icon, tile, v-on='on', @click='toggleTaskList')
+            v-icon mdi-format-list-checks
+        span {{$t('editor:markup.taskList')}}
       v-tooltip(bottom, color='primary')
         template(v-slot:activator='{ on }')
           v-btn.mx-0(icon, tile, v-on='on', @click='toggleBlockquote')
@@ -65,51 +80,207 @@ export default {
   props: {
     editor: {
       type: Object,
-      required: true
+      required: true,
+      validator: function(value) {
+        return value !== null && typeof value === 'object'
+      }
+    }
+  },
+  data() {
+    return {
+      isReady: false,
+      isLoading: true,
+      currentColor: '#000000',
+      currentHighlight: '#FFEB3B',
+      fonts: [
+        { label: 'Default', value: 'default' },
+        { label: 'Arial', value: 'Arial' },
+        { label: 'Helvetica', value: 'Helvetica' },
+        { label: 'Times New Roman', value: 'Times New Roman' },
+        { label: 'Courier New', value: 'Courier New' },
+        { label: 'Georgia', value: 'Georgia' },
+        { label: 'Trebuchet MS', value: 'Trebuchet MS' },
+        { label: 'Verdana', value: 'Verdana' }
+      ]
+    }
+  },
+  watch: {
+    editor: {
+      immediate: true,
+      handler(newVal) {
+        this.isReady = !!newVal && !!newVal.commands
+        this.isLoading = false
+      }
     }
   },
   methods: {
+    ensureEditor() {
+      if (!this.isReady || !this.editor || !this.editor.commands) {
+        console.warn('Editor not fully initialized')
+        return false
+      }
+      return true
+    },
     toggleBold() {
-      this.editor.chain().focus().toggleBold().run()
+      if (this.ensureEditor()) {
+        try {
+          this.editor.chain().focus().toggleBold().run()
+        } catch (err) {
+          console.error('Error toggling bold:', err)
+        }
+      }
     },
     toggleItalic() {
-      this.editor.chain().focus().toggleItalic().run()
+      if (this.ensureEditor()) {
+        try {
+          this.editor.chain().focus().toggleItalic().run()
+        } catch (err) {
+          console.error('Error toggling italic:', err)
+        }
+      }
     },
     toggleStrike() {
-      this.editor.chain().focus().toggleStrike().run()
+      if (this.ensureEditor()) {
+        try {
+          this.editor.chain().focus().toggleStrike().run()
+        } catch (err) {
+          console.error('Error toggling strike:', err)
+        }
+      }
+    },
+    toggleSubscript() {
+      if (this.ensureEditor()) {
+        try {
+          this.editor.chain().focus().toggleSubscript().run()
+        } catch (err) {
+          console.error('Error toggling subscript:', err)
+        }
+      }
+    },
+    toggleSuperscript() {
+      if (this.ensureEditor()) {
+        try {
+          this.editor.chain().focus().toggleSuperscript().run()
+        } catch (err) {
+          console.error('Error toggling superscript:', err)
+        }
+      }
     },
     setHeading(level) {
-      this.editor.chain().focus().toggleHeading({ level }).run()
+      if (this.ensureEditor()) {
+        try {
+          this.editor.chain().focus().toggleHeading({ level }).run()
+        } catch (err) {
+          console.error('Error setting heading:', err)
+        }
+      }
     },
     toggleBulletList() {
-      this.editor.chain().focus().toggleBulletList().run()
+      if (this.ensureEditor()) {
+        try {
+          this.editor.chain().focus().toggleBulletList().run()
+        } catch (err) {
+          console.error('Error toggling bullet list:', err)
+        }
+      }
     },
     toggleOrderedList() {
-      this.editor.chain().focus().toggleOrderedList().run()
+      if (this.ensureEditor()) {
+        try {
+          this.editor.chain().focus().toggleOrderedList().run()
+        } catch (err) {
+          console.error('Error toggling ordered list:', err)
+        }
+      }
+    },
+    toggleTaskList() {
+      if (this.ensureEditor()) {
+        try {
+          this.editor.chain().focus().toggleTaskList().run()
+        } catch (err) {
+          console.error('Error toggling task list:', err)
+        }
+      }
     },
     toggleBlockquote() {
-      this.editor.chain().focus().toggleBlockquote().run()
+      if (this.ensureEditor()) {
+        try {
+          this.editor.chain().focus().toggleBlockquote().run()
+        } catch (err) {
+          console.error('Error toggling blockquote:', err)
+        }
+      }
     },
     setHorizontalRule() {
-      this.editor.chain().focus().setHorizontalRule().run()
+      if (this.ensureEditor()) {
+        try {
+          this.editor.chain().focus().setHorizontalRule().run()
+        } catch (err) {
+          console.error('Error setting horizontal rule:', err)
+        }
+      }
     },
     insertLink() {
-      const previousUrl = this.editor.getAttributes('link').href
-      const url = window.prompt('URL', previousUrl)
+      if (!this.ensureEditor()) return
       
-      // cancelled
-      if (url === null) {
-        return
+      try {
+        const previousUrl = this.editor.getAttributes('link').href
+        const url = window.prompt('URL', previousUrl)
+        
+        // cancelled
+        if (url === null) {
+          return
+        }
+        
+        // empty
+        if (url === '') {
+          this.editor.chain().focus().extendMarkRange('link').unsetLink().run()
+          return
+        }
+        
+        // update link
+        this.editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
+      } catch (err) {
+        console.error('Error inserting link:', err)
       }
-      
-      // empty
-      if (url === '') {
-        this.editor.chain().focus().extendMarkRange('link').unsetLink().run()
-        return
+    },
+    setColor(color) {
+      if (this.ensureEditor()) {
+        try {
+          this.currentColor = color
+          this.editor.chain().focus().setColor(color).run()
+        } catch (err) {
+          console.error('Error setting color:', err)
+        }
       }
-      
-      // update link
-      this.editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
+    },
+    setFontFamily(font) {
+      if (this.ensureEditor()) {
+        try {
+          this.editor.chain().focus().setFontFamily(font).run()
+        } catch (err) {
+          console.error('Error setting font family:', err)
+        }
+      }
+    },
+    setTextAlign(align) {
+      if (this.ensureEditor()) {
+        try {
+          this.editor.chain().focus().setTextAlign(align).run()
+        } catch (err) {
+          console.error('Error setting text alignment:', err)
+        }
+      }
+    },
+    setHighlight(color) {
+      if (this.ensureEditor()) {
+        try {
+          this.currentHighlight = color
+          this.editor.chain().focus().toggleHighlight({ color }).run()
+        } catch (err) {
+          console.error('Error setting highlight:', err)
+        }
+      }
     }
   }
 }
@@ -117,6 +288,20 @@ export default {
 
 <style lang="scss">
 .editor-bode-toolbar {
-  // Your custom toolbar styling here
+  background-color: mc('grey', '300');
+  border-bottom: 1px solid mc('grey', '400');
+  padding: 4px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  @at-root .theme--dark & {
+    background-color: mc('grey', '800');
+    border-bottom-color: mc('grey', '700');
+  }
+
+  .v-btn {
+    margin: 0 2px;
+  }
 }
 </style> 

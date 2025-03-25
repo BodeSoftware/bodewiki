@@ -200,7 +200,7 @@ module.exports = {
     new CopyWebpackPlugin({
       patterns: [
         { from: 'client/static' },
-        { from: './node_modules/prismjs/components', to: 'js/prism' }
+        { from: './node_modules/prismjs/components', to: '_assets/js/prism' }
       ]
     }),
     new MiniCssExtractPlugin({

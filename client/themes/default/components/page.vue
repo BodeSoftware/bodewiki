@@ -360,7 +360,7 @@
 import { StatusIndicator } from 'vue-status-indicator'
 import Tabset from './tabset.vue'
 import NavSidebar from './nav-sidebar.vue'
-import Prism from 'prismjs'
+import Prism from '../../../libs/prism/config'
 import mermaid from 'mermaid'
 import { get, sync } from 'vuex-pathify'
 import _ from 'lodash'
@@ -369,15 +369,6 @@ import Vue from 'vue'
 
 Vue.component('Tabset', Tabset)
 
-Prism.plugins.autoloader.languages_path = '/_assets/js/prism/'
-Prism.plugins.NormalizeWhitespace.setDefaults({
-  'remove-trailing': true,
-  'remove-indent': true,
-  'left-trim': true,
-  'right-trim': true,
-  'remove-initial-line-feed': true,
-  'tabs-to-spaces': 2
-})
 Prism.plugins.toolbar.registerButton('copy-to-clipboard', (env) => {
   let linkCopy = document.createElement('button')
   linkCopy.textContent = 'Copy'

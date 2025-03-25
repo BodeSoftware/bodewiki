@@ -171,8 +171,22 @@ export default {
     }
   },
   methods: {
+    ensureEditor() {
+      if (!this.editor) {
+        console.warn('Editor not initialized')
+        return false
+      }
+      return true
+    },
+    selectItem(index) {
+      const item = this.filteredItems[index]
+      
+      if (item && this.ensureEditor()) {
+        this.$emit('select', item)
+      }
+    },
     onKeyDown(event) {
-      if (!this.isActive) return
+      if (!this.isActive || !this.ensureEditor()) return
 
       if (event.key === 'ArrowUp') {
         this.upHandler()
@@ -205,14 +219,6 @@ export default {
     
     enterHandler() {
       this.selectItem(this.selectedIndex)
-    },
-    
-    selectItem(index) {
-      const item = this.filteredItems[index]
-      
-      if (item) {
-        this.$emit('select', item)
-      }
     }
   },
   
