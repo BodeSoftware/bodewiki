@@ -11,6 +11,7 @@ import { ErrorLink } from 'apollo-link-error'
 import { InMemoryCache } from 'apollo-cache-inmemory'
 import { getMainDefinition } from 'apollo-utilities'
 import VueApollo from 'vue-apollo'
+import { createUploadLink } from 'apollo-upload-client'
 import Vuetify from 'vuetify/lib'
 import Velocity from 'velocity-animate'
 import Vuescroll from 'vuescroll/dist/vuescroll-native'
@@ -51,6 +52,15 @@ store.commit('user/REFRESH_AUTH')
 
 const graphQLEndpoint = window.location.protocol + '//' + window.location.host + '/graphql'
 const graphQLWSEndpoint = ((window.location.protocol === 'https:') ? 'wss:' : 'ws:') + '//' + window.location.host + '/graphql-subscriptions'
+
+// Create upload link for file uploads
+const uploadLink = createUploadLink({
+  uri: graphQLEndpoint,
+  credentials: 'include',
+  headers: {
+    'Apollo-Require-Preflight': 'true'
+  }
+})
 
 const graphQLLink = ApolloLink.from([
   new ErrorLink(({ graphQLErrors, networkError }) => {
@@ -119,10 +129,20 @@ const graphQLWSLink = new WebSocketLink({
 })
 
 window.graphQL = new ApolloClient({
-  link: split(({ query }) => {
-    const { kind, operation } = getMainDefinition(query)
-    return kind === 'OperationDefinition' && operation === 'subscription'
-  }, graphQLWSLink, graphQLLink),
+  link: split(
+    ({ query }) => {
+      const { kind, operation } = getMainDefinition(query)
+      return kind === 'OperationDefinition' && operation === 'subscription'
+    },
+    graphQLWSLink,
+    split(
+      operation => {
+        return operation.getContext().hasUpload
+      },
+      uploadLink,
+      graphQLLink
+    )
+  ),
   cache: new InMemoryCache(),
   connectToDevTools: (process.env.node_env === 'development')
 })

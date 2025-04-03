@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "es2015",
+    "module": "esnext",
+    "baseUrl": "./",
+    "moduleResolution": "node",
+    "paths": {
+      "@/*": ["client/*"]
+    },
+    "jsx": "preserve"
+  },
+  "vueCompilerOptions": {
+    "plugins": [
+      "@vue/language-plugin-pug"
+    ]
+  },
+  "include": [
+    "client/**/*.js",
+    "client/**/*.vue"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+} 

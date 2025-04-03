@@ -52,6 +52,7 @@ import TaskItem from '@tiptap/extension-task-item'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { lowlight } from 'lowlight'
 import { html as beautify } from 'js-beautify'
+import gql from 'graphql-tag'
 import EditorBodeToolbar from './bode/toolbar.vue'
 import SlashCommand from './bode/slash-command.vue'
 import InfoBox from './bode/info-box.vue'
@@ -188,13 +189,82 @@ export default {
         timestamp: new Date().toISOString()
       })
     },
-    loadVersion(version) {
+    async loadVersionHistory() {
+      try {
+        const result = await this.$apollo.query({
+          query: gql`
+            query ($id: Int!) {
+              pages {
+                history(id: $id) {
+                  trail {
+                    versionId
+                    authorName
+                    actionType
+                    versionDate
+                  }
+                  total
+                }
+              }
+            }
+          `,
+          variables: {
+            id: this.$store.get('page/id')
+          }
+        })
+        this.versions = _.get(result, 'data.pages.history.trail', [])
+      } catch (err) {
+        console.error('Error loading version history:', err)
+        this.$store.commit('showNotification', {
+          message: 'Failed to load version history: ' + err.message,
+          style: 'error'
+        })
+      }
+    },
+    async loadVersion(version) {
       if (!this.editor) return
-      this.currentVersion = version
-      this.editor.commands.setContent(version.content)
-      this.showVersionHistory = false
-      this.checkoutDateActive = version.timestamp
-      this.$root.$emit('resetEditorConflict')
+      
+      try {
+        const result = await this.$apollo.query({
+          query: gql`
+            query ($id: Int!, $versionId: Int!) {
+              pages {
+                version(id: $id, versionId: $versionId) {
+                  content
+                  contentType
+                  createdAt
+                  versionDate
+                  authorName
+                }
+              }
+            }
+          `,
+          variables: {
+            id: this.$store.get('page/id'),
+            versionId: version.versionId
+          }
+        })
+        
+        const versionData = _.get(result, 'data.pages.version', {})
+        
+        if (versionData.content) {
+          this.currentVersion = versionData
+          this.editor.commands.setContent(versionData.content)
+          this.showVersionHistory = false
+          this.checkoutDateActive = versionData.versionDate
+          this.$root.$emit('resetEditorConflict')
+          
+          this.$store.commit('showNotification', {
+            message: `Loaded version from ${versionData.authorName}`,
+            style: 'success'
+          })
+        }
+      } catch (err) {
+        console.error('Error loading version:', err)
+        this.$store.commit('showNotification', {
+          message: 'Failed to load version: ' + err.message,
+          style: 'error'
+        })
+      }
     },
     search(query) {
       if (!this.editor) return
@@ -216,6 +286,411 @@ export default {
       } catch (err) {
         console.error('Error performing search:', err)
       }
+    },
+    setupPasteHandlers() {
+      if (!this.editor) return
+      
+      // Listen for paste events
+      window.addEventListener('paste', async event => {
+        const items = (event.clipboardData || event.originalEvent.clipboardData).items
+        const html = event.clipboardData.getData('text/html')
+        
+        // Special handling for Google Docs content
+        if (html && html.includes('docs-internal-guid')) {
+          console.log('Detected Google Docs paste')
+          
+          // Create a temporary element to parse the HTML
+          const tempElement = document.createElement('div')
+          tempElement.innerHTML = html
+          
+          // Find all Google Docs images
+          const googleDocsImages = tempElement.querySelectorAll('img[src^="data:image/"], img[src^="https://lh3.googleusercontent.com/"]')
+          
+          if (googleDocsImages.length > 0) {
+            // Process each image
+            for (const img of googleDocsImages) {
+              let imgSrc = img.getAttribute('src')
+              
+              try {
+                let blob
+                if (imgSrc.startsWith('data:image/')) {
+                  // Convert base64 to blob
+                  const base64Data = imgSrc.split(',')[1]
+                  const byteCharacters = atob(base64Data)
+                  const byteArrays = []
+                  
+                  for (let i = 0; i < byteCharacters.length; i += 512) {
+                    const slice = byteCharacters.slice(i, i + 512)
+                    const byteNumbers = new Array(slice.length)
+                    for (let j = 0; j < slice.length; j++) {
+                      byteNumbers[j] = slice.charCodeAt(j)
+                    }
+                    byteArrays.push(new Uint8Array(byteNumbers))
+                  }
+                  
+                  blob = new Blob(byteArrays, { type: 'image/png' })
+                } else {
+                  // Fetch image from Google Docs URL
+                  const response = await fetch(imgSrc)
+                  if (!response.ok) continue
+                  blob = await response.blob()
+                }
+                
+                // Create a file object
+                const file = new File([blob], `gdocs-image-${Date.now()}.${blob.type.split('/')[1] || 'png'}`, { type: blob.type })
+                
+                // Upload to server
+                const formData = new FormData()
+                formData.append('mediaUpload', file)
+                
+                // Show loading indicator
+                this.$store.commit('showNotification', {
+                  message: 'Uploading Google Docs image...',
+                  style: 'info'
+                })
+                
+                // Upload the image
+                const result = await this.$apollo.mutate({
+                  mutation: gql`
+                    mutation ($folderId: Int!, $file: Upload!) {
+                      assets {
+                        upload(
+                          folderId: $folderId
+                          file: $file
+                        ) {
+                          responseResult {
+                            succeeded
+                            errorCode
+                            slug
+                            message
+                          }
+                          asset {
+                            id
+                            filename
+                            ext
+                            kind
+                            fileSize
+                            url
+                            createdAt
+                          }
+                        }
+                      }
+                    }
+                  `,
+                  variables: {
+                    folderId: 0, // Root folder
+                    file: formData.get('mediaUpload')
+                  },
+                  context: {
+                    hasUpload: true
+                  }
+                })
+                
+                const asset = _.get(result, 'data.assets.upload.asset', null)
+                if (asset) {
+                  // Update image src in the temporary element
+                  img.setAttribute('src', asset.url)
+                  img.removeAttribute('width')
+                  img.removeAttribute('height')
+                  
+                  this.$store.commit('showNotification', {
+                    message: 'Google Docs image uploaded successfully',
+                    style: 'success'
+                  })
+                }
+              } catch (err) {
+                console.error('Error uploading Google Docs image:', err)
+              }
+            }
+            
+            // Now insert the modified HTML with fixed images
+            this.editor.commands.insertContent(tempElement.innerHTML)
+            
+            // Prevent default paste behavior
+            event.preventDefault()
+            event.stopPropagation()
+            return
+          }
+        }
+        
+        // Special handling for Confluence-pasted content
+        if (html && html.includes('confluence')) {
+          console.log('Detected Confluence paste')
+          
+          // Create a temporary element to parse the HTML
+          const tempElement = document.createElement('div')
+          tempElement.innerHTML = html
+          
+          // Find all Confluence images
+          const confluenceImages = tempElement.querySelectorAll('img[data-image-src], img[data-macro-name="image"]')
+          
+          if (confluenceImages.length > 0) {
+            // Process each image
+            for (const img of confluenceImages) {
+              // Get the image URL - either from data-image-src or src
+              let imgSrc = img.getAttribute('data-image-src') || img.getAttribute('src')
+              
+              if (imgSrc) {
+                try {
+                  // Create a fetch request to get the image
+                  const response = await fetch(imgSrc)
+                  if (!response.ok) continue
+                  
+                  // Convert to blob
+                  const blob = await response.blob()
+                  
+                  // Create a file object
+                  const file = new File([blob], `confluence-image-${Date.now()}.${blob.type.split('/')[1] || 'png'}`, { type: blob.type })
+                  
+                  // Upload to server
+                  const formData = new FormData()
+                  formData.append('mediaUpload', file)
+                  
+                  // Show loading indicator
+                  this.$store.commit('showNotification', {
+                    message: 'Uploading Confluence image...',
+                    style: 'info'
+                  })
+                  
+                  // Upload the image
+                  const result = await this.$apollo.mutate({
+                    mutation: gql`
+                      mutation ($folderId: Int!, $file: Upload!) {
+                        assets {
+                          upload(
+                            folderId: $folderId
+                            file: $file
+                          ) {
+                            responseResult {
+                              succeeded
+                              errorCode
+                              slug
+                              message
+                            }
+                            asset {
+                              id
+                              filename
+                              ext
+                              kind
+                              fileSize
+                              url
+                              createdAt
+                            }
+                          }
+                        }
+                      }
+                    `,
+                    variables: {
+                      folderId: 0, // Root folder
+                      file: formData.get('mediaUpload')
+                    },
+                    context: {
+                      hasUpload: true
+                    }
+                  })
+                  
+                  const asset = _.get(result, 'data.assets.upload.asset', null)
+                  if (asset) {
+                    // Update image src in the temporary element
+                    img.setAttribute('src', asset.url)
+                    img.removeAttribute('data-image-src')
+                    img.removeAttribute('data-macro-name')
+                    
+                    this.$store.commit('showNotification', {
+                      message: 'Confluence image uploaded successfully',
+                      style: 'success'
+                    })
+                  }
+                } catch (err) {
+                  console.error('Error uploading Confluence image:', err)
+                }
+              }
+            }
+            
+            // Now insert the modified HTML with fixed images
+            this.editor.commands.insertContent(tempElement.innerHTML)
+            
+            // Prevent default paste behavior
+            event.preventDefault()
+            event.stopPropagation()
+            return
+          }
+        }
+        
+        // Regular image paste handling (for non-Confluence content)
+        for (const item of items) {
+          if (item.type.indexOf('image') === 0) {
+            const file = item.getAsFile()
+            if (!file) continue
+            
+            try {
+              // Create a form data object
+              const formData = new FormData()
+              formData.append('mediaUpload', file)
+              
+              // Show loading indicator
+              this.$store.commit('showNotification', {
+                message: 'Uploading pasted image...',
+                style: 'info'
+              })
+              
+              // Upload the image
+              const result = await this.$apollo.mutate({
+                mutation: gql`
+                  mutation ($folderId: Int!, $file: Upload!) {
+                    assets {
+                      upload(
+                        folderId: $folderId
+                        file: $file
+                      ) {
+                        responseResult {
+                          succeeded
+                          errorCode
+                          slug
+                          message
+                        }
+                        asset {
+                          id
+                          filename
+                          ext
+                          kind
+                          fileSize
+                          url
+                          createdAt
+                        }
+                      }
+                    }
+                  }
+                `,
+                variables: {
+                  folderId: 0, // Root folder
+                  file: formData.get('mediaUpload')
+                },
+                context: {
+                  hasUpload: true
+                }
+              })
+              
+              const asset = _.get(result, 'data.assets.upload.asset', null)
+              if (asset) {
+                // Insert the image at cursor position
+                this.editor.chain().focus().setImage({ src: asset.url }).run()
+                
+                // Prevent default paste behavior for this item
+                event.preventDefault()
+                event.stopPropagation()
+                
+                this.$store.commit('showNotification', {
+                  message: 'Image uploaded successfully',
+                  style: 'success'
+                })
+              }
+            } catch (err) {
+              console.error('Error uploading pasted image:', err)
+              this.$store.commit('showNotification', {
+                message: 'Failed to upload pasted image: ' + err.message,
+                style: 'error'
+              })
+            }
+          }
+        }
+      })
+    },
+    async saveContent(opts = {}) {
+      try {
+        const processedContent = this.prepareContentForSave()
+        this.$store.set('editor/content', processedContent)
+        await this.save(opts)
+      } catch (err) {
+        console.error('Error saving content:', err)
+        this.$store.commit('showNotification', {
+          message: 'Failed to save content: ' + err.message,
+          style: 'error'
+        })
+      }
+    },
+    async forcePageSave() {
+      try {
+        await this.saveContent({ overwrite: true })
+      } catch (err) {
+        console.error('Error forcing page save:', err)
+        this.$store.commit('showNotification', {
+          message: 'Failed to save page: ' + err.message,
+          style: 'error'
+        })
+      }
+    },
+    reloadContent() {
+      if (!this.editor) return
+      const content = this.$store.get('editor/content')
+      const processedContent = this.processImagesAfterLoad(content)
+      this.editor.commands.setContent(processedContent)
+      this.updateStats()
+      this.$store.commit('showNotification', {
+        message: 'Content has been updated from server version',
+        style: 'info'
+      })
+    },
+    prepareContentForSave() {
+      if (!this.editor) return this.$store.get('editor/content')
+      
+      try {
+        const content = this.editor.getHTML()
+        
+        // Create a temporary DOM element to work with the content
+        const tempElement = document.createElement('div')
+        tempElement.innerHTML = content
+        
+        // Process all images
+        const images = tempElement.querySelectorAll('img')
+        images.forEach(img => {
+          const src = img.getAttribute('src')
+          
+          // Convert base64 images to assets if necessary
+          if (src && src.startsWith('data:image/')) {
+            // We'll keep those as is for now, but in a production environment
+            // you would upload them as assets here
+            console.log('Found base64 image in content on save')
+          }
+          
+          // Ensure image has proper attributes
+          img.setAttribute('loading', 'lazy')
+          img.setAttribute('data-wikijs-element', 'image')
+        })
+        
+        return tempElement.innerHTML
+      } catch (err) {
+        console.error('Error preparing content for save:', err)
+        return this.$store.get('editor/content')
+      }
+    },
+    processImagesAfterLoad(content) {
+      if (!content) return content
+      
+      try {
+        // Create a temporary DOM element
+        const tempElement = document.createElement('div')
+        tempElement.innerHTML = content
+        
+        // Fix image paths if needed
+        const images = tempElement.querySelectorAll('img')
+        images.forEach(img => {
+          const src = img.getAttribute('src')
+          
+          // Ensure relative URLs start with a slash
+          if (src && !src.startsWith('data:') && !src.startsWith('http') && !src.startsWith('/')) {
+            img.setAttribute('src', '/' + src)
+          }
+          
+          // Add loading lazy attribute
+          img.setAttribute('loading', 'lazy')
+        })
+        
+        return tempElement.innerHTML
+      } catch (err) {
+        console.error('Error processing images after load:', err)
+        return content
+      }
     }
   },
   async mounted () {
@@ -224,6 +699,10 @@ export default {
     if (this.mode === 'create' && !this.$store.get('editor/content')) {
       this.$store.set('editor/content', '<h1>Header</h1><p>Your content here</p>')
     }
+
+    // Setup version control listeners
+    this.$root.$on('forceSave', this.forcePageSave)
+    this.$root.$on('overwriteEditorContent', this.reloadContent)
 
     try {
       // Wait for the editor element to be mounted
@@ -247,6 +726,60 @@ export default {
             allowBase64: true,
             HTMLAttributes: {
               class: 'editor-image'
+            },
+            uploadImage: async (file) => {
+              try {
+                // Create a form data object
+                const formData = new FormData()
+                formData.append('mediaUpload', file)
+                
+                // Upload the image
+                const result = await this.$apollo.mutate({
+                  mutation: gql`
+                    mutation ($folderId: Int!, $file: Upload!) {
+                      assets {
+                        upload(
+                          folderId: $folderId
+                          file: $file
+                        ) {
+                          responseResult {
+                            succeeded
+                            errorCode
+                            slug
+                            message
+                          }
+                          asset {
+                            id
+                            filename
+                            ext
+                            kind
+                            fileSize
+                            url
+                            createdAt
+                          }
+                        }
+                      }
+                    }
+                  `,
+                  variables: {
+                    folderId: 0, // Root folder
+                    file: formData.get('mediaUpload')
+                  },
+                  context: {
+                    hasUpload: true
+                  }
+                })
+                
+                const asset = _.get(result, 'data.assets.upload.asset', null)
+                if (asset) {
+                  return asset.url
+                } else {
+                  throw new Error('Failed to upload image')
+                }
+              } catch (err) {
+                console.error('Image upload error:', err)
+                return null
+              }
             }
           }),
           Link.configure({
@@ -316,36 +849,7 @@ export default {
       this.updateStats()
       
       // Load version history if available
-      try {
-        this.$apollo.query({
-          query: gql`
-            query ($id: Int!) {
-              pages {
-                history (id: $id) {
-                  trail {
-                    authorName
-                    content
-                    createdAt
-                    versionId
-                  }
-                }
-              }
-            }
-          `,
-          variables: {
-            id: this.$store.get('page/id')
-          }
-        }).then(resp => {
-          this.versions = _.get(resp, 'data.pages.history.trail', []).map(h => ({
-            id: h.versionId,
-            content: h.content,
-            author: h.authorName,
-            timestamp: h.createdAt
-          }))
-        })
-      } catch (err) {
-        console.error('Error loading version history:', err)
-      }
+      await this.loadVersionHistory()
       
       // Mark editor as ready only after successful initialization
       this.isEditorReady = true
@@ -401,33 +905,19 @@ export default {
     this.$root.$on('saveConflict', () => {
       this.isConflict = true
     })
-    
-    this.$root.$on('overwriteEditorContent', () => {
-      if (!this.editor) return
-      
-      try {
-        this.editor.commands.setContent(this.$store.get('editor/content'))
-      } catch (err) {
-        console.error('Error overwriting editor content:', err)
-      }
-    })
+
+    // Setup paste event handlers
+    this.setupPasteHandlers()
   },
   beforeDestroy () {
-    if (this.editor) {
-      try {
-        this.editor.destroy()
-      } catch (err) {
-        console.error('Error destroying editor:', err)
-      } finally {
-        this.editor = null
-      }
-    }
-    
     // Clean up event listeners
-    this.$root.$off('editorInsert')
-    this.$root.$off('editorLinkToPage')
-    this.$root.$off('saveConflict')
-    this.$root.$off('overwriteEditorContent')
+    this.$root.$off('forceSave', this.forcePageSave)
+    this.$root.$off('overwriteEditorContent', this.reloadContent)
+    
+    // Destroy the editor instance
+    if (this.editor) {
+      this.editor.destroy()
+    }
   }
 }
 </script>

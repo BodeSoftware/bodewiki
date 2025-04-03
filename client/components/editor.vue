@@ -87,7 +87,8 @@ export default {
     editorModalMedia: () => import(/* webpackChunkName: "editor", webpackMode: "eager" */ './editor/editor-modal-media.vue'),
     editorModalBlocks: () => import(/* webpackChunkName: "editor", webpackMode: "eager" */ './editor/editor-modal-blocks.vue'),
     editorModalConflict: () => import(/* webpackChunkName: "editor-conflict", webpackMode: "lazy" */ './editor/editor-modal-conflict.vue'),
-    editorModalDrawio: () => import(/* webpackChunkName: "editor", webpackMode: "eager" */ './editor/editor-modal-drawio.vue')
+    editorModalDrawio: () => import(/* webpackChunkName: "editor", webpackMode: "eager" */ './editor/editor-modal-drawio.vue'),
+    editorModalMerge: () => import(/* webpackChunkName: "editor-merge", webpackMode: "lazy" */ './editor/editor-modal-merge.vue')
   },
   props: {
     locale: {
@@ -261,6 +262,10 @@ export default {
       this.isConflict = false
     })
 
+    this.$root.$on('forceSave', () => {
+      this.save({ overwrite: true })
+    })
+
     // this.$store.set('editor/mode', 'edit')
     // this.currentEditor = `editorApi`
   },
@@ -375,23 +380,26 @@ export default {
           // -> UPDATE EXISTING PAGE
           // --------------------------------------------
 
-          const conflictResp = await this.$apollo.query({
-            query: gql`
-              query ($id: Int!, $checkoutDate: Date!) {
-                pages {
-                  checkConflicts(id: $id, checkoutDate: $checkoutDate)
+          // Skip conflict detection if overwrite is true (used when resolving conflicts)
+          if (!overwrite) {
+            const conflictResp = await this.$apollo.query({
+              query: gql`
+                query ($id: Int!, $checkoutDate: Date!) {
+                  pages {
+                    checkConflicts(id: $id, checkoutDate: $checkoutDate)
+                  }
                 }
+              `,
+              fetchPolicy: 'network-only',
+              variables: {
+                id: this.pageId,
+                checkoutDate: this.checkoutDateActive
               }
-            `,
-            fetchPolicy: 'network-only',
-            variables: {
-              id: this.pageId,
-              checkoutDate: this.checkoutDateActive
+            })
+            if (_.get(conflictResp, 'data.pages.checkConflicts', false)) {
+              this.$root.$emit('saveConflict')
+              throw new Error(this.$t('editor:conflict.warning'))
             }
-          })
-          if (_.get(conflictResp, 'data.pages.checkConflicts', false)) {
-            this.$root.$emit('saveConflict')
-            throw new Error(this.$t('editor:conflict.warning'))
           }
 
           let resp = await this.$apollo.mutate({

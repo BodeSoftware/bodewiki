@@ -18,6 +18,18 @@ module.exports = {
       return ''
     }
 
+    // Add version metadata to the rendered content
+    if (this.page && this.page.version) {
+      $('body').attr('data-version', this.page.version)
+    }
+    
+    // Add content hash for conflict detection
+    if (this.page) {
+      const crypto = require('crypto')
+      const contentHash = crypto.createHash('md5').update(this.input).digest('hex')
+      $('body').attr('data-content-hash', contentHash)
+    }
+
     // --------------------------------
     // STEP: PRE
     // --------------------------------
@@ -182,6 +194,21 @@ module.exports = {
             })
           }
         }
+        
+        // Track link changes in version history if available
+        if (WIKI.models.pageHistory && missingLinks.length > 0) {
+          try {
+            await WIKI.models.pageHistory.addVersion({
+              action: 'links-add',
+              pageId: this.page.id, 
+              authorId: this.page.authorId || 1,
+              content: JSON.stringify(missingLinks),
+              hash: this.page.hash || ''
+            })
+          } catch (err) {
+            WIKI.logger.warn('Error updating version history with link changes:', err)
+          }
+        }
       }
     }
 
@@ -194,6 +221,30 @@ module.exports = {
         await WIKI.models.pageLinks.query().delete().whereIn('id', _.map(outdatedLinks, 'id'))
       }
     }
+
+    // --------------------------------
+    // Fix image paths
+    // --------------------------------
+    
+    $('img').each((i, elm) => {
+      let src = $(elm).attr('src')
+      
+      // Skip external images, data URLs, and already properly formatted URLs
+      if (!src || src.startsWith('data:') || src.startsWith('http:') || src.startsWith('https:') || src.startsWith('/')) {
+        return
+      }
+      
+      // Fix relative URLs by adding a slash prefix
+      $(elm).attr('src', '/' + src)
+      
+      // Add loading lazy attribute if not already present
+      if (!$(elm).attr('loading')) {
+        $(elm).attr('loading', 'lazy')
+      }
+      
+      // Add Wiki.js image attribute
+      $(elm).attr('data-wikijs-element', 'image')
+    })
 
     // --------------------------------
     // Add header handles

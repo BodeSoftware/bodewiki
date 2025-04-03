@@ -1,37 +1,35 @@
 <template lang="pug">
-  v-navigation-drawer.version-history(
-    v-model="isShown"
-    app
-    right
-    temporary
-    width="400"
+  v-dialog(
+    v-model="isActive"
+    max-width="900px"
   )
-    v-toolbar(color="primary", dark, dense, flat)
-      v-toolbar-title Version History
-      v-spacer
-      v-btn(icon, @click="close")
-        v-icon mdi-close
-    v-list.py-0
-      template(v-for="version in versions")
-        .version-item.mb-4(:key="version.id")
-          v-list-item(@click="preview(version)")
-            v-list-item-avatar
-              v-icon mdi-history
-            v-list-item-content
-              v-list-item-title {{ formatDate(version.timestamp) }}
-              v-list-item-subtitle {{ version.author }}
-            v-list-item-action
-              v-btn(icon, @click.stop="restore(version)")
-                v-icon mdi-restore
-          v-divider
-    v-dialog(v-model="previewDialog" max-width="800")
-      v-card
-        v-card-title {{ $t('editor:bode.versionPreview') }}
-        v-card-text
-          .version-preview(v-html="previewContent")
-        v-card-actions
-          v-spacer
-          v-btn(text @click="previewDialog = false") {{ $t('common:actions.close') }}
+    v-card
+      v-card-title.headline {{ $t('editor:versionHistory.title') }}
+      v-card-text
+        v-data-table(
+          :headers="headers"
+          :items="formattedVersions"
+          :loading="loading"
+          :no-data-text="$t('editor:versionHistory.none')"
+          :items-per-page="10"
+          item-key="versionId"
+        )
+          template(v-slot:item.versionDate="{ item }")
+            span {{ formatDate(item.versionDate) }}
+          template(v-slot:item.actions="{ item }")
+            v-btn(
+              icon
+              small
+              @click="loadVersion(item)"
+              :title="$t('editor:versionHistory.load')"
+            )
+              v-icon mdi-backup-restore
+      v-card-actions
+        v-spacer
+        v-btn(
+          text
+          @click="close"
+        ) {{ $t('common:actions.close') }}
 </template>
 
 <script>
@@ -51,69 +49,59 @@ export default {
   },
   data() {
     return {
-      previewDialog: false,
-      previewContent: ''
+      isActive: false,
+      loading: false,
+      headers: [
+        { text: this.$t('editor:versionHistory.date'), value: 'versionDate', align: 'start' },
+        { text: this.$t('editor:versionHistory.author'), value: 'authorName' },
+        { text: this.$t('editor:versionHistory.action'), value: 'actionType' },
+        { text: this.$t('editor:versionHistory.actions'), value: 'actions', sortable: false, align: 'right' }
+      ]
     }
   },
   computed: {
-    isShown: {
-      get() {
-        return this.value
-      },
-      set(value) {
-        this.$emit('input', value)
-      }
+    formattedVersions() {
+      return this.versions.map(v => ({
+        ...v,
+        actionType: this.formatAction(v.actionType)
+      }))
+    }
+  },
+  watch: {
+    value(newValue) {
+      this.isActive = newValue
+    },
+    isActive(newValue) {
+      this.$emit('input', newValue)
     }
   },
   methods: {
+    formatDate(date) {
+      if (!date) return '-'
+      return format(new Date(date), 'MMM d, yyyy h:mm a')
+    },
+    formatAction(action) {
+      const actionMap = {
+        initial: this.$t('editor:versionHistory.actionTypes.initial'),
+        edit: this.$t('editor:versionHistory.actionTypes.edit'),
+        move: this.$t('editor:versionHistory.actionTypes.move'),
+        delete: this.$t('editor:versionHistory.actionTypes.delete'),
+        restore: this.$t('editor:versionHistory.actionTypes.restore')
+      }
+      return actionMap[action] || action
+    },
+    loadVersion(version) {
+      this.$emit('load-version', version)
+    },
     close() {
-      this.isShown = false
-    },
-    formatDate(timestamp) {
-      return format(new Date(timestamp), 'PPpp')
-    },
-    preview(version) {
-      this.previewContent = version.content
-      this.previewDialog = true
-    },
-    restore(version) {
-      this.$dialog({
-        title: 'Restore Version',
-        message: 'Are you sure you want to restore this version? Current changes will be lost.',
-        buttons: [
-          {
-            text: 'Cancel'
-          },
-          {
-            text: 'Restore',
-            color: 'primary',
-            handler: () => {
-              this.$emit('restore', version)
-            }
-          }
-        ]
-      })
+      this.isActive = false
     }
   }
 }
 </script>
 
-<style lang="scss" scoped>
-.version-history {
-  .v-list-item {
-    cursor: pointer;
-    
-    &:hover {
-      background-color: rgba(0, 0, 0, 0.04);
-    }
-  }
-}
-
-.version-preview {
-  max-height: 60vh;
-  overflow-y: auto;
-  padding: 1rem;
-  background-color: #f5f5f5;
-  border-radius: 4px;
+<style lang="scss">
+.v-data-table {
+  background-color: transparent !important;
 }
 </style> 

@@ -28,7 +28,16 @@ logLevel: info
 uploads:
   maxFileSize: 10485760
   maxFiles: 20
+  storage: local
+  path: ./data/uploads
+  url: /uploads
 
 # Features
 features:
-  collaborativeEditor: false 
+  collaborativeEditor: false
+
+# Storage
+storage:
+  uploadsPath: ./data/uploads
+  thumbnailsPath: ./data/thumbs
+  enableExternalStorage: false 
